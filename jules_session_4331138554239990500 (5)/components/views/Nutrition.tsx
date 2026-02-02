@@ -2,6 +2,7 @@
 import React, { useState, useRef, useMemo, useEffect } from 'react';
 import { Camera, Upload, Loader2, Check, Clock, Edit2, X, Target, AlertCircle, Trash2, Sparkles, Flame, Droplets, Wheat, Beef, Plus, ChefHat, Timer, Link as LinkIcon, ExternalLink, Brain, ArrowRight, List, Info, ChevronRight } from 'lucide-react';
 import { ScanResult, NutritionGoals, Recipe } from '../../types';
+import { searchFood } from '../../data/foodDatabase';
 
 interface NutritionProps {
     showToast: (msg: string) => void;
@@ -35,6 +36,7 @@ const Nutrition: React.FC<NutritionProps> = ({
 
   const [isGoalModalOpen, setGoalModalOpen] = useState(false);
   const [selectedRecipe, setSelectedRecipe] = useState<Recipe | null>(null);
+  const [isEditingResult, setIsEditingResult] = useState(false);
   
   const fileInputRef = useRef<HTMLInputElement>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
@@ -83,23 +85,38 @@ const Nutrition: React.FC<NutritionProps> = ({
     setIsScanning(true);
     if(onClearExternalResult) onClearExternalResult();
 
+    // Try to infer food from filename
+    const fileName = file.name.split('.')[0].replace(/[-_]/g, ' ');
+    const dbResult = searchFood(fileName);
+
     // Mock image analysis
     setTimeout(() => {
-        const mockResult: ScanResult = {
-            id: Date.now().toString(),
-            foodName: "Custom Meal",
-            calories: 450,
-            protein: 30,
-            carbs: 50,
-            fats: 15,
-            insight: "Captured visual data suggests a high-density nutritional profile.",
-            healthScore: 90,
-            image: objectUrl,
-            timestamp: new Date()
-        };
-        setScanResult(mockResult);
+        if (dbResult) {
+            const result: ScanResult = {
+                ...dbResult,
+                id: Date.now().toString(),
+                image: objectUrl,
+                timestamp: new Date()
+            };
+            setScanResult(result);
+            showToast("PLATE ANALYSIS COMPLETE: High-precision match.");
+        } else {
+            const mockResult: ScanResult = {
+                id: Date.now().toString(),
+                foodName: fileName.charAt(0).toUpperCase() + fileName.slice(1),
+                calories: 450,
+                protein: 30,
+                carbs: 50,
+                fats: 15,
+                insight: "Captured visual data analyzed. (Approximate values - please verify food identity)",
+                healthScore: 80,
+                image: objectUrl,
+                timestamp: new Date()
+            };
+            setScanResult(mockResult);
+            showToast("PLATE ANALYSIS COMPLETE: Identifying components...");
+        }
         setIsScanning(false);
-        showToast("PLATE ANALYSIS COMPLETE.");
     }, 2000);
   };
 
@@ -117,15 +134,40 @@ const Nutrition: React.FC<NutritionProps> = ({
       setIsSuggesting(true);
       
       setTimeout(() => {
-          const mockSuggestion = {
-              foodName: "Elite Fuel Bowl",
-              calories: 520,
-              protein: 35,
-              carbs: 60,
-              fats: 18,
-              insight: "Based on your remaining quota, this nutrient-dense configuration is recommended."
-          };
-          setSuggestedMealResult(mockSuggestion);
+          const remainingCals = goals.calories - todaysTotals.calories;
+          const remainingProtein = goals.protein - todaysTotals.protein;
+
+          let suggestion;
+          if (remainingProtein > 20) {
+              suggestion = {
+                  foodName: "Grilled Chicken & Broccoli",
+                  calories: 320,
+                  protein: 45,
+                  carbs: 12,
+                  fats: 8,
+                  insight: "Prioritizing protein synthesis to meet your daily intake target."
+              };
+          } else if (remainingCals > 400) {
+              suggestion = {
+                  foodName: "Quinoa Energy Bowl",
+                  calories: 450,
+                  protein: 15,
+                  carbs: 65,
+                  fats: 12,
+                  insight: "High-density carbohydrate configuration to replenish glycogen stores."
+              };
+          } else {
+              suggestion = {
+                  foodName: "Light Avocado Salad",
+                  calories: 180,
+                  protein: 4,
+                  carbs: 10,
+                  fats: 14,
+                  insight: "Light nutritional maintenance to stabilize bio-markers."
+              };
+          }
+
+          setSuggestedMealResult(suggestion);
           setIsSuggesting(false);
           showToast("ELITE RECOMMENDATION RECEIVED.");
       }, 1500);
@@ -427,23 +469,49 @@ const Nutrition: React.FC<NutritionProps> = ({
                     <div className="flex-1 bg-slate-900 p-6 md:p-12 rounded-[32px] md:rounded-[48px] shadow-2xl border border-white/5 flex flex-col justify-between">
                         <div>
                             <div className="flex flex-col sm:flex-row justify-between items-start mb-8 md:mb-12 gap-6 md:gap-8">
-                                <div>
-                                    <h3 className="text-3xl md:text-5xl font-black text-slate-100 tracking-tighter leading-tight md:leading-none">{scanResult.foodName}</h3>
+                                <div className="flex-1">
+                                    {isEditingResult ? (
+                                        <input
+                                            type="text"
+                                            value={scanResult.foodName}
+                                            onChange={e => setScanResult({...scanResult, foodName: e.target.value})}
+                                            className="text-3xl md:text-5xl font-black text-slate-100 bg-transparent border-b border-indigo-500 outline-none w-full"
+                                        />
+                                    ) : (
+                                        <h3 className="text-3xl md:text-5xl font-black text-slate-100 tracking-tighter leading-tight md:leading-none">{scanResult.foodName}</h3>
+                                    )}
                                     <p className="text-slate-400 text-base md:text-xl mt-4 md:mt-6 leading-relaxed font-medium">{scanResult.insight}</p>
                                 </div>
-                                <div className="bg-indigo-600 text-white px-4 md:px-6 py-2 md:py-2.5 rounded-2xl text-[10px] font-black flex items-center gap-3 uppercase tracking-wider shadow-2xl shadow-indigo-950 shrink-0 border border-indigo-400/20"><Sparkles size={16}/> PROTOCOL VERIFIED</div>
+                                <div className="flex flex-col gap-2 shrink-0">
+                                    <div className="bg-indigo-600 text-white px-4 md:px-6 py-2 md:py-2.5 rounded-2xl text-[10px] font-black flex items-center gap-3 uppercase tracking-wider shadow-2xl shadow-indigo-950 border border-indigo-400/20"><Sparkles size={16}/> PROTOCOL VERIFIED</div>
+                                    <button
+                                        onClick={() => setIsEditingResult(!isEditingResult)}
+                                        className="text-[10px] font-black text-indigo-400 hover:text-indigo-300 uppercase tracking-widest flex items-center justify-end gap-2 transition-colors"
+                                    >
+                                        <Edit2 size={12}/> {isEditingResult ? "Save Identity" : "Correct Identity"}
+                                    </button>
+                                </div>
                             </div>
 
                             <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 md:gap-8 mb-10 md:mb-16">
                                 {[
-                                    { l: 'Calories', v: scanResult.calories, c: 'bg-slate-950 text-slate-100 border-white/5' },
-                                    { l: 'Protein', v: `${scanResult.protein}g`, c: 'bg-indigo-500/10 text-indigo-400 border-indigo-500/20' },
-                                    { l: 'Carbs', v: `${scanResult.carbs}g`, c: 'bg-amber-500/10 text-amber-400 border-amber-500/20' },
-                                    { l: 'Fats', v: `${scanResult.fats}g`, c: 'bg-rose-500/10 text-rose-400 border-rose-500/20' }
+                                    { l: 'Calories', v: scanResult.calories, k: 'calories', c: 'bg-slate-950 text-slate-100 border-white/5' },
+                                    { l: 'Protein', v: scanResult.protein, k: 'protein', c: 'bg-indigo-500/10 text-indigo-400 border-indigo-500/20' },
+                                    { l: 'Carbs', v: scanResult.carbs, k: 'carbs', c: 'bg-amber-500/10 text-amber-400 border-amber-500/20' },
+                                    { l: 'Fats', v: scanResult.fats, k: 'fats', c: 'bg-rose-500/10 text-rose-400 border-rose-500/20' }
                                 ].map((s, i) => (
                                     <div key={i} className={`${s.c} p-4 md:p-8 rounded-[24px] md:rounded-[32px] text-center border shadow-inner transition-all hover:scale-105 group`}>
                                         <p className="text-[10px] font-black uppercase opacity-40 mb-2 md:mb-3 tracking-widest group-hover:opacity-100 transition-opacity">{s.l}</p>
-                                        <p className="font-black text-2xl md:text-3xl tabular-nums">{s.v}</p>
+                                        {isEditingResult ? (
+                                            <input
+                                                type="number"
+                                                value={s.v}
+                                                onChange={e => setScanResult({...scanResult, [s.k]: Number(e.target.value)})}
+                                                className="font-black text-xl md:text-2xl tabular-nums bg-transparent border-b border-indigo-500/50 outline-none w-full text-center"
+                                            />
+                                        ) : (
+                                            <p className="font-black text-2xl md:text-3xl tabular-nums">{s.v}{s.k !== 'calories' ? 'g' : ''}</p>
+                                        )}
                                     </div>
                                 ))}
                             </div>
