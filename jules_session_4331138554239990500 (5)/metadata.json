@@ -1,0 +1,7 @@
+{
+  "name": "NutriPulse Elite",
+  "description": "Your nutritional peak: precision meal tracking, mindfulness, and habit optimization.",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}
